@@ -182,6 +182,63 @@ splitting the load into multiple parallel chains.
       #1      #2       #3 Pi connector (three parallel chains of len 1)
 ```
 
+#### Windmill (center-origin dual V)
+
+If you have two V-mapped strands that originate from the center and extend
+outward in opposite horizontal directions (rotationally symmetric wiring), the
+"Windmill" mapper expresses this layout. It splits the virtual canvas into two
+halves: the left half renders to parallel chain #0 and the right half renders to
+parallel chain #1. The left half is mirrored at the center so that on both
+halves, panel order increases as you move away from the center. An optional
+":Z" parameter enables serpentine cabling behavior (every other panel flipped),
+matching the behavior of `V-mapper:Z`.
+
+Requirements:
+- Use exactly two parallel outputs (`--led-parallel=2`).
+- `--led-chain` is the number of panels in each vertical stack per strand.
+
+Usage examples:
+
+```
+  # Two parallel chains, each a vertical stack of 4 panels
+  ./demo --led-rows=64 --led-cols=32 \
+      --led-chain=4 --led-parallel=2 \
+      --led-pixel-mapper=Windmill
+
+  # Same, but with serpentine cabling on the stacks
+  ./demo --led-rows=64 --led-cols=32 \
+      --led-chain=4 --led-parallel=2 \
+      --led-pixel-mapper=Windmill:Z
+
+  # You can still combine with global transforms if needed
+  ./demo --led-rows=64 --led-cols=32 \
+      --led-chain=4 --led-parallel=2 \
+      --led-pixel-mapper="Windmill;Rotate:90"
+```
+
+Viewed looking at the LED-side of the panels, the physical cabling looks like
+two vertical stacks that begin at the center seam and grow outward:
+
+```
+        (center seam)
+      [ O < I ] | [ I > O ]
+        ^            ^
+      [ O < I ] | [ I > O ]
+        ^            ^
+      [ O < I ] | [ I > O ]
+        ^            ^
+      [ O < I ] | [ I > O ]
+      chain #0 | chain #1
+```
+
+Notes:
+- The Windmill mapper keeps the same size transformation as V-mapper: the
+  visible width is `parallel * panel_width` and the visible height is
+  `chain * panel_height`. You can apply `Rotate` if you need a different final
+  orientation.
+- If you have more than two parallel outputs, Windmill currently requires
+  `--led-parallel=2`.
+
 #### Rotate
 
 The "Rotate" mapper allows you to rotate your screen. It takes an angle

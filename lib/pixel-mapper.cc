@@ -283,6 +283,85 @@ private:
   int parallel_;
 };
 
+// Windmill mapper: Two V-mapped strands originating from the center and
+// extending outward to left and right. The virtual canvas is split into two
+// halves; the left half maps to parallel chain #0 (with optional mirroring to
+// keep panel order increasing away from the center), the right half maps to
+// parallel chain #1. Supports optional ":Z" serpentine like V-mapper.
+class WindmillMapper : public PixelMapper {
+public:
+  WindmillMapper() : z_(false), chain_(1), parallel_(1) {}
+
+  virtual const char *GetName() const { return "Windmill"; }
+
+  virtual bool SetParameters(int chain, int parallel, const char *param) {
+    chain_ = chain;
+    parallel_ = parallel;
+    if (parallel_ != 2) {
+      fprintf(stderr, "Windmill: requires --led-parallel=2 (got %d)\n",
+              parallel_);
+      return false;
+    }
+    // Optional argument :Z enables serpentine cabling (every other panel
+    // flipped)
+    z_ = (param && strcasecmp(param, "Z") == 0);
+    return true;
+  }
+
+  virtual bool GetSizeMapping(int matrix_width, int matrix_height,
+                              int *visible_width, int *visible_height) const {
+    // Same size transform as V-mapper: width collapses to parallel *
+    // panel_width, height expands to chain * panel_height.
+    *visible_width = matrix_width * parallel_ / chain_;
+    *visible_height = matrix_height * chain_ / parallel_;
+    return true;
+  }
+
+  virtual void MapVisibleToMatrix(int matrix_width, int matrix_height, int x,
+                                  int y, int *matrix_x, int *matrix_y) const {
+    const int panel_width = matrix_width / chain_;
+    const int panel_height = matrix_height / parallel_;
+
+    // Compute visible width to determine center split.
+    const int visible_width = (matrix_width * parallel_) / chain_;
+    const int half_width =
+        visible_width / 2; // With parallel=2, equals panel_width.
+
+    // Determine which half (0 = left, 1 = right) and x position within that
+    // half.
+    const int half = (x < half_width) ? 0 : 1;
+    const int x_in_half = x % half_width;
+
+    // Mirror the left half so that both halves 'grow' away from center.
+    const int x_local = (half == 0) ? (half_width - 1 - x_in_half) : x_in_half;
+
+    // Follow V-mapper math for stacking: x_panel_start depends on y (panel
+    // row); y_panel_start selects the parallel chain stripe solely based on
+    // half.
+    const int x_panel_start = (y / panel_height) * panel_width;
+    const int y_panel_start = half * panel_height;
+
+    const int x_within_panel = x_local % panel_width;
+    const int y_within_panel = y % panel_height;
+
+    // Keep Z behavior consistent with V-mapper: flip every other panel row.
+    const bool is_height_even_panels = ((matrix_width / panel_width) % 2);
+    const bool needs_flipping =
+        z_ && (is_height_even_panels - ((y / panel_height) % 2)) == 0;
+
+    *matrix_x =
+        x_panel_start +
+        (needs_flipping ? (panel_width - 1 - x_within_panel) : x_within_panel);
+    *matrix_y =
+        y_panel_start +
+        (needs_flipping ? (panel_height - 1 - y_within_panel) : y_within_panel);
+  }
+
+private:
+  bool z_;
+  int chain_;
+  int parallel_;
+};
 
 typedef std::map<std::string, PixelMapper*> MapperByName;
 static void RegisterPixelMapperInternal(MapperByName *registry,
@@ -302,6 +381,7 @@ static MapperByName *CreateMapperMap() {
   RegisterPixelMapperInternal(result, new UArrangementMapper());
   RegisterPixelMapperInternal(result, new VerticalMapper());
   RegisterPixelMapperInternal(result, new MirrorPixelMapper());
+  RegisterPixelMapperInternal(result, new WindmillMapper());
   return result;
 }
 
