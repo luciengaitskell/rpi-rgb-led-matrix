@@ -385,11 +385,11 @@ public:
     int uy = (panel_height - 1 -
               rx); // within physical panel height (0..panel_height-1)
 
-    // For the left half, the observed orientation needs a vertical flip so that
-    // y grows downward (top-left origin for the full display).
+    // For the left half, flip horizontally so that x grows to the right
+    // (top-left origin for the full display).
     if (is_left_half) {
-      uy = panel_height - 1 - uy;
-  }
+      ux = panel_width - 1 - ux;
+    }
 
   // Optional serpentine flip every other panel in each chain.
   if (z_ && (cpos % 2 == 1)) {
