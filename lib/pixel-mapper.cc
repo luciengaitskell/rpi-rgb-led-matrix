@@ -385,10 +385,13 @@ public:
     int uy = (panel_height - 1 -
               rx); // within physical panel height (0..panel_height-1)
 
-    // For the left half, flip horizontally so that x grows to the right
-    // (top-left origin for the full display).
+    // For the left half, flip both axes (180°) so that
+    // - x grows to the right
+    // - y grows downward
+    // keeping the same panel sequencing.
     if (is_left_half) {
       ux = panel_width - 1 - ux;
+      uy = panel_height - 1 - uy;
     }
 
   // Optional serpentine flip every other panel in each chain.
@@ -400,15 +403,6 @@ public:
     // Compose final physical matrix coordinates.
     *matrix_x = cpos * panel_width + ux;
     *matrix_y = p * panel_height + uy;
-
-    // quick cludge fix
-    // the left half of the windmill is flipped by 180 and needs to be corrected
-    // make sure to re-evaluate is_left_half
-
-    if (is_left_half) {
-      *matrix_x = (cpos + 1) * panel_width - 1 - ux;
-      *matrix_y = (p + 1) * panel_height - 1 - uy;
-    }
   }
 
 private:
