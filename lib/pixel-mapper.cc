@@ -371,18 +371,25 @@ public:
     const int p_left = swap_lr_ ? 1 : 0;
     const int p_right = swap_lr_ ? 0 : 1;
     const int p = is_left_half ? p_left : p_right; // 0 or 1
-    // Panel order: left half is already mapped from center outward by
-    // idx_in_half. Right half is reversed so that increasing x goes from
-    // center to the rightmost panel without jumping backwards.
-    const int cpos = is_left_half ? idx_in_half : (chain_ - 1 - idx_in_half);
+    // Left half: map from far left (x=0) toward center as cpos increases.
+    // Right half: keep previous fix so scanning from center to far right
+    // progresses correctly.
+    const int cpos =
+        is_left_half ? panel_index_along_width : (chain_ - 1 - idx_in_half);
 
-  // Rotate the portrait panel by 90 degrees to achieve 64px height.
-  // We'll choose a rotation such that the top of the final display (y small)
-  // maps to the top-row of the physical panel after rotation.
-  // Using CCW rotation: (ux,uy) from (rx,ry)
-  int ux = ry; // within physical panel width (0..panel_width-1)
-  int uy = (panel_height - 1 -
-            rx); // within physical panel height (0..panel_height-1)
+    // Rotate the portrait panel by 90 degrees to achieve 64px height.
+    // We'll choose a rotation such that the top of the final display (y small)
+    // maps to the top-row of the physical panel after rotation.
+    // Using CCW rotation: (ux,uy) from (rx,ry)
+    int ux = ry; // within physical panel width (0..panel_width-1)
+    int uy = (panel_height - 1 -
+              rx); // within physical panel height (0..panel_height-1)
+
+    // For the left half, the observed orientation needs a vertical flip so that
+    // y grows downward (top-left origin for the full display).
+    if (is_left_half) {
+      uy = panel_height - 1 - uy;
+  }
 
   // Optional serpentine flip every other panel in each chain.
   if (z_ && (cpos % 2 == 1)) {
@@ -393,6 +400,15 @@ public:
     // Compose final physical matrix coordinates.
     *matrix_x = cpos * panel_width + ux;
     *matrix_y = p * panel_height + uy;
+
+    // quick cludge fix
+    // the left half of the windmill is flipped by 180 and needs to be corrected
+    // make sure to re-evaluate is_left_half
+
+    if (is_left_half) {
+      *matrix_x = (cpos + 1) * panel_width - 1 - ux;
+      *matrix_y = (p + 1) * panel_height - 1 - uy;
+    }
   }
 
 private:
