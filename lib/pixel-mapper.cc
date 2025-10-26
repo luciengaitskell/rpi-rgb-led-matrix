@@ -283,14 +283,19 @@ private:
   int parallel_;
 };
 
-// Windmill mapper: Two V-mapped strands originating from the center and
-// extending outward to left and right. The virtual canvas is split into two
-// halves; the left half maps to parallel chain #0 (with optional mirroring to
-// keep panel order increasing away from the center), the right half maps to
-// parallel chain #1. Supports optional ":Z" serpentine like V-mapper.
-class WindmillMapper : public PixelMapper {
+// Windmill mapper: arrange two parallel chains that start at the center and
+// extend outward to left and right. Panels are mounted in portrait (e.g. 32x64)
+// and the overall display is assembled horizontally to height=rows*parallel
+// and width=rows*parallel*chain (each portrait panel contributes 'rows' pixels
+// to the width when rotated). This mapper keeps the final logical size as
+// width = panel_height * chain * parallel; height = panel_width.
+//
+// Parameters (optional):
+//  - "Z"  : flip every other panel in each chain (serpentine cabling)
+//  - "S"  : swap left/right chains (if your parallel wiring is reversed)
+class WindmillPixelMapper : public PixelMapper {
 public:
-  WindmillMapper() : z_(false), chain_(1), parallel_(1) {}
+  WindmillPixelMapper() : z_(false), swap_lr_(false), chain_(1), parallel_(1) {}
 
   virtual const char *GetName() const { return "Windmill"; }
 
@@ -302,63 +307,94 @@ public:
               parallel_);
       return false;
     }
-    // Optional argument :Z enables serpentine cabling (every other panel
-    // flipped)
-    z_ = (param && strcasecmp(param, "Z") == 0);
+    z_ = false;
+    swap_lr_ = false;
+    if (param && *param) {
+      for (const char *p = param; *p; ++p) {
+        const char c = *p;
+        if (c == ':' || c == ',' || c == ';' || c == ' ')
+          continue; // ignore separators
+        switch (c) {
+        case 'Z':
+        case 'z':
+          z_ = true;
+          break;
+        case 'S':
+        case 's':
+          swap_lr_ = true;
+          break;
+        default:
+          fprintf(stderr, "Windmill: unknown parameter '%c' (use Z and/or S)\n",
+                  c);
+          return false;
+        }
+      }
+    }
     return true;
   }
 
   virtual bool GetSizeMapping(int matrix_width, int matrix_height,
                               int *visible_width, int *visible_height) const {
-    // Same size transform as V-mapper: width collapses to parallel *
-    // panel_width, height expands to chain * panel_height.
-    *visible_width = matrix_width * parallel_ / chain_;
-    *visible_height = matrix_height * chain_ / parallel_;
+    const int panel_width = matrix_width / chain_;      // e.g. 64
+    const int panel_height = matrix_height / parallel_; // e.g. 32
+    // Each portrait panel contributes panel_height pixels to the final width,
+    // and final height equals panel_width.
+    *visible_width = panel_height * chain_ * parallel_;
+    *visible_height = panel_width;
     return true;
   }
 
   virtual void MapVisibleToMatrix(int matrix_width, int matrix_height, int x,
                                   int y, int *matrix_x, int *matrix_y) const {
-    const int panel_width = matrix_width / chain_;
-    const int panel_height = matrix_height / parallel_;
+    const int panel_width = matrix_width / chain_;      // physical panel width
+    const int panel_height = matrix_height / parallel_; // physical panel height
 
-    // Compute visible width to determine center split.
-    const int visible_width = (matrix_width * parallel_) / chain_;
-    const int half_width =
-        visible_width / 2; // With parallel=2, equals panel_width.
+    // Compute which rotated panel we are in along the logical width.
+    const int panels_total =
+        chain_ * parallel_; // total panels across final width
+    const int panel_index_along_width = x / panel_height; // 0..panels_total-1
+    const int rx =
+        x % panel_height; // within rotated panel (width = panel_height)
+    const int ry = y;     // within rotated panel (height = panel_width)
 
-    // Determine which half (0 = left, 1 = right) and x position within that
-    // half.
-    const int half = (x < half_width) ? 0 : 1;
-    const int x_in_half = x % half_width;
+    // Map logical panel index to (parallel channel p, position along chain
+    // cpos) Left half consists of the chain that extends to the left from
+    // center. Right half consists of the chain that extends to the right from
+    // center.
+    const int half = chain_;
+    const int is_left_half = (panel_index_along_width < half) ? 1 : 0;
+    const int idx_in_half = is_left_half ? (half - 1 - panel_index_along_width)
+                                         : (panel_index_along_width - half);
 
-    // Mirror the left half so that both halves 'grow' away from center.
-    const int x_local = (half == 0) ? (half_width - 1 - x_in_half) : x_in_half;
+    // Choose which parallel channel maps to left/right. By default, p_left=0,
+    // p_right=1
+    const int p_left = swap_lr_ ? 1 : 0;
+    const int p_right = swap_lr_ ? 0 : 1;
+    const int p = is_left_half ? p_left : p_right; // 0 or 1
+    const int cpos = idx_in_half;                  // 0..chain_-1
 
-    // Follow V-mapper math for stacking: x_panel_start depends on y (panel
-    // row); y_panel_start selects the parallel chain stripe solely based on
-    // half.
-    const int x_panel_start = (y / panel_height) * panel_width;
-    const int y_panel_start = half * panel_height;
+    // Rotate the portrait panel by 90 degrees to achieve 64px height.
+    // We'll choose a rotation such that the top of the final display (y small)
+    // maps to the top-row of the physical panel after rotation.
+    // Using CCW rotation: (ux,uy) from (rx,ry)
+    int ux = ry; // within physical panel width (0..panel_width-1)
+    int uy = (panel_height - 1 -
+              rx); // within physical panel height (0..panel_height-1)
 
-    const int x_within_panel = x_local % panel_width;
-    const int y_within_panel = y % panel_height;
+    // Optional serpentine flip every other panel in each chain.
+    if (z_ && (cpos % 2 == 1)) {
+      ux = panel_width - 1 - ux;
+      uy = panel_height - 1 - uy;
+    }
 
-    // Keep Z behavior consistent with V-mapper: flip every other panel row.
-    const bool is_height_even_panels = ((matrix_width / panel_width) % 2);
-    const bool needs_flipping =
-        z_ && (is_height_even_panels - ((y / panel_height) % 2)) == 0;
-
-    *matrix_x =
-        x_panel_start +
-        (needs_flipping ? (panel_width - 1 - x_within_panel) : x_within_panel);
-    *matrix_y =
-        y_panel_start +
-        (needs_flipping ? (panel_height - 1 - y_within_panel) : y_within_panel);
+    // Compose final physical matrix coordinates.
+    *matrix_x = cpos * panel_width + ux;
+    *matrix_y = p * panel_height + uy;
   }
 
 private:
   bool z_;
+  bool swap_lr_;
   int chain_;
   int parallel_;
 };
@@ -380,8 +416,8 @@ static MapperByName *CreateMapperMap() {
   RegisterPixelMapperInternal(result, new RotatePixelMapper());
   RegisterPixelMapperInternal(result, new UArrangementMapper());
   RegisterPixelMapperInternal(result, new VerticalMapper());
+  RegisterPixelMapperInternal(result, new WindmillPixelMapper());
   RegisterPixelMapperInternal(result, new MirrorPixelMapper());
-  RegisterPixelMapperInternal(result, new WindmillMapper());
   return result;
 }
 
