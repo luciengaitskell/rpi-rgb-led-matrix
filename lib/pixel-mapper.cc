@@ -297,7 +297,7 @@ public:
   virtual const char *GetName() const { return "StackToRow"; }
 
   virtual bool SetParameters(int chain, int parallel, const char *param) {
-    bands_ = parallel; // number of vertical bands (from Rotate:90;V-mapper)
+    bands_ = parallel;
     z_ = false;
     flip_right_ = false;
     if (param && *param) {
@@ -319,7 +319,6 @@ public:
 
   virtual bool GetSizeMapping(int matrix_width, int matrix_height,
                               int *visible_width, int *visible_height) const {
-    // Input: stacked bands, each of width matrix_width, height = matrix_height / bands_
     *visible_width = matrix_width * bands_;
     *visible_height = matrix_height / bands_;
     return true;
@@ -327,9 +326,9 @@ public:
 
   virtual void MapVisibleToMatrix(int matrix_width, int matrix_height, int x, int y,
                                   int *matrix_x, int *matrix_y) const {
-    const int band_height = matrix_height / bands_;
     const int band_width = matrix_width;
-    const int band = x / band_width; // which band (0..bands_-1)
+    const int band_height = matrix_height / bands_;
+    const int band = x / band_width;
     const int x_in_band = x % band_width;
     const int y_in_band = y;
 
@@ -343,13 +342,12 @@ public:
       src_y = band_height - 1 - src_y;
     }
 
-    // Optionally flip the right half by 180° (for windmill symmetry)
+    // Optionally flip the right half by 180deg
     if (flip_right_ && band >= bands_ / 2) {
       src_x = band_width - 1 - src_x;
       src_y = band_height - 1 - src_y;
     }
 
-    // Map to the original stacked layout
     *matrix_x = src_x;
     *matrix_y = src_band * band_height + src_y;
   }
