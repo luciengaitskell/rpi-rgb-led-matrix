@@ -303,7 +303,7 @@ public:
     if (param && *param) {
       for (const char *p = param; *p; ++p) {
         const char c = *p;
-        if (c == ':' || c == ',' || c == ';' || c == ' ')
+        if (c == ',' || c == ' ')
           continue;
         switch (c) {
         case 'Z': case 'z': z_ = true; break;
