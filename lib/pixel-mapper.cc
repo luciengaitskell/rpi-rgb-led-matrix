@@ -283,10 +283,9 @@ private:
   int parallel_;
 };
 
-
-// StackToRowMapper: takes a vertically stacked display (e.g. after V-mapper;Rotate:90)
-// and rearranges it into a horizontal row of the same bands, optionally flipping
-// every other band for symmetry. This is a generalization of the Windmill layout.
+// Takes a vertically stacked parallel strands and display rearranges it into a
+// horizontal row of the same bands, optionally flipping every other band for
+// symmetry.
 //
 // Parameters (optional):
 //   - "Z": flip every other band (serpentine)
